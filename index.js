@@ -16,7 +16,6 @@ exports.init = function(pi){
 	pluginInterface = pi ;
 	log = pluginInterface.log ;
 	localStorage = pluginInterface.localStorage ;
-	pi.server.onCall = onProcCall;
 	ipv4.setNetCallbackFunctions(
 		function(net,newmac,newip){
 			for( let plugin_name in NetCallbacks )
@@ -275,11 +274,6 @@ exports.init = function(pi){
 			}
 		}) ;
 	}) ;
-
-	// Plugin must return (possibly in promise) procedure call callback function.
-	// The signature is ( method , devid , propertyname , argument )
-	return onProcCall;
-	//	return ( method , devid , propertyname , argument) => 'Admin proc call: '+procname+'('+JSON.stringify(argument)+')' ;
 } ;
 
 // Returns promise
@@ -301,6 +295,7 @@ exports.getMACs = function(bSelfOnly) {
 }
 
 
+exports.onCall = onProcCall;
 function onProcCall( method , path /*devid , propname*/ , args ){
 	switch(method){
 	case 'GET' :
