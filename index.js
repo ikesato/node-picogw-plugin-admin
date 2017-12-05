@@ -2,16 +2,10 @@ let pluginInterface ;
 let log = console.log ;
 let localStorage ;
 let ipv4 = require('./ipv4.js');
-let cryptico = require('cryptico');
 let sudo = require('./sudo.js');
 const pathm = require('path');
 var fs = require('fs');
 const exec = require('child_process').exec;
-
-const MyLocalStorage = require('../../../MyLocalStorage.js') ;
-const SingleFileLocalStorage = MyLocalStorage.SingleFileLocalStorage ;
-const MYPATH  = __filename.split(pathm.sep).slice(0,-1).join('/') ;
-const clLocalStorage = new SingleFileLocalStorage(MYPATH+'/../../../clients/localstorage.json') ;
 
 const NMCLI_CONNECTION_NAME_PREFIX = 'picogw_conn' ;
 
@@ -22,6 +16,7 @@ exports.init = function(pi){
 	pluginInterface = pi ;
 	log = pluginInterface.log ;
 	localStorage = pluginInterface.localStorage ;
+	pi.server.onCall = onProcCall;
 	ipv4.setNetCallbackFunctions(
 		function(net,newmac,newip){
 			for( let plugin_name in NetCallbacks )
@@ -52,7 +47,7 @@ exports.init = function(pi){
 			let schema_default_json = JSON.parse(fs.readFileSync(pluginInterface.getpath()+'settings_schema_default.json').toString()) ;
 			let schema_wlan_json = JSON.parse(fs.readFileSync(pluginInterface.getpath()+'settings_schema_wlan.json').toString()) ;
 
-			let cl_settings = clLocalStorage.content() ;
+			let cl_settings = localStorage.content() ;
 			let cur_settings ;
 			try {
 				cur_settings = JSON.parse(fs.readFileSync(pluginInterface.getpath()+'settings.json').toString()) ;
@@ -182,9 +177,9 @@ exports.init = function(pi){
 				pluginInterface.publish('client_settings',{port:newSettings.server_port}) ;
 
 			for( let cl_name in newSettings.api_filter ){
-				let clo = clLocalStorage.getItem(cl_name) ;
+				let clo = localStorage.getItem(cl_name) ;
 				clo.filter = newSettings.api_filter[cl_name] ;
-				clLocalStorage.setItem(cl_name,clo) ;
+				localStorage.setItem(cl_name,clo) ;
 			}
 
 			if( newSettings.interfaces != null ){
