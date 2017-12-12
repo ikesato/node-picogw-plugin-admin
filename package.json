@@ -27,5 +27,12 @@
     "pidof": "^1.0.2",
     "ping": "^0.2.2",
     "read": "^1.0.7"
+  },
+  "devDependencies": {
+    "eslint": "^4.13.1",
+    "eslint-config-google": "^0.9.1"
+  },
+  "scripts": {
+    "lint": "eslint ."
   }
 }
