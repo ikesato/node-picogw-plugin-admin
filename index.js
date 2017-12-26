@@ -178,8 +178,7 @@ async function onUIGetSettingsSchema(schemaJson, curSettings) {
     const pi = pluginInterface;
     const localStorage = pi.localStorage;
     const readJSON = (basename) => {
-        const path = pathm.join(pi.getpath(), basename);
-        return JSON.parse(fs.readFileSync(path).toString());
+        return JSON.parse(pi.pluginfs.readFileSync(basename).toString());
     };
     const schemaDefaultJson = readJSON('settings_schema_default.json');
     const schemaWlanJson = readJSON('settings_schema_wlan.json');
