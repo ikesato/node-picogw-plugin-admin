@@ -201,7 +201,7 @@ async function onUIGetSettingsSchema(schemaJson, curSettings) {
     schemaJson.properties.api_filter.properties = setProp;
 
 
-    return listNetInterfaces().then((interfaces, bWlanExist) => {
+    return listNetInterfaces().then(([interfaces, bWlanExist]) => {
         let curInterf;
         let curAp;
         if (typeof curSettings.interfaces == 'object') {
@@ -440,7 +440,7 @@ function listNetInterfaces() {
                 interfaces.push(sp[0]);
             });
 
-            ac(bWlanExist, interfaces);
+            ac([interfaces, bWlanExist]);
         });
     });
 }
