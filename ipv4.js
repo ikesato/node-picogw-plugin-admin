@@ -72,6 +72,9 @@ exports.setNetCallbackFunctions = function(
         _onIPChangedCallback || function(net, mac, oldip, newip) {};
 };
 
+exports.convToNum = convToNum;
+
+
 // ///////////////////////////////////////////
 // //   Exports ended
 // ///////////////////////////////////////////
@@ -134,19 +137,28 @@ function pingNet(net, ip) {
 
 // eslint-disable-next-line require-jsdoc
 function isNetworkSame(maskstr, ip1str, ip2str) {
-    const convToNum = (ipstr) => {
-        let ret = 0;
-        let mul = 256*256*256;
-        ipstr.split('.').forEach((numstr)=>{
-            ret += parseInt(numstr)*mul; mul>>=8;
-        });
-        return ret;
-    };
     let mask = convToNum(maskstr);
     let ip1 = convToNum(ip1str);
     let ip2 = convToNum(ip2str);
     return (ip1&mask) == (ip2&mask);
 }
+
+
+/**
+ * Convert to number value from string IP address
+ * @param {string} ipstr : string IP address
+ * @return {number} number value of IP address
+ */
+function convToNum(ipstr) {
+    let ret = 0;
+    let mul = 256*256*256;
+    ipstr.split('.').forEach((numstr)=>{
+        ret += parseInt(numstr)*mul;
+        mul >>= 8;
+    });
+    return ret;
+}
+
 
 // eslint-disable-next-line require-jsdoc
 function chkArpTable() {
@@ -245,6 +257,8 @@ function chkArpTable() {
         // log('New macs:'); log(macs);
     } catch (e) {
         macs = oldmacs;
+        log('An error occurred in checkArpTable');
+        log(e);
     }
 }
 

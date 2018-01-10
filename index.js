@@ -1,9 +1,8 @@
 let log = console.log;
 const ipv4 = require('./ipv4.js');
 const sudo = require('./sudo.js');
-const fs = require('fs');
-const pathm = require('path');
 const exec = require('child_process').exec;
+const spawn = require('child_process').spawn;
 let pluginInterface;
 let localStorage;
 
@@ -20,7 +19,7 @@ function init(_pluginInterface) {
     log = pi.log;
     ipv4.setNetCallbackFunctions(
         function(net, newmac, newip) {
-            for (const callbacks of NetCallbacks) {
+            for (const callbacks of Object.values(NetCallbacks)) {
                 if (callbacks.onMacFoundCallback != undefined) {
                     callbacks.onMacFoundCallback(net, newmac, newip);
                 }
@@ -28,7 +27,7 @@ function init(_pluginInterface) {
             // NetCallbacks[plugin_name].onNewIDFoundCallback(newid,newip);
         }
         , function(net, lostmac, lostip) {
-            for (const callbacks of NetCallbacks) {
+            for (const callbacks of Object.values(NetCallbacks)) {
                 if (callbacks.onMacLostCallback != undefined) {
                     callbacks.onMacLostCallback(net, lostmac, lostip);
                 }
@@ -36,7 +35,7 @@ function init(_pluginInterface) {
             // NetCallbacks[plugin_name].onIPAddressLostCallback(id,lostip);
         }
         , function(net, mac, oldip, newip) {
-            for (const callbacks of NetCallbacks) {
+            for (const callbacks of Object.values(NetCallbacks)) {
                 if (callbacks.onIPChangedCallback != undefined) {
                     callbacks.onIPChangedCallback(net, mac, oldip, newip);
                 }
@@ -377,39 +376,17 @@ function onUISetSettings(newSettings) {
             // log('Commands:');
             // log(JSON.stringify(commands,null,'\t'));
 
-            const ignoreErrorCmds = ['delete', 'down'];
-            const ex = () => {
-                if (commands.length==0) {
-                    // ipv4.refreshMyAddress();
-                    ac(newSettings);
-                    return;
-                }
-                let cmd = commands.shift();
-                if (cmd.length == 0) {
-                    ac(newSettings); ex();
-                    return;
-                }
-                // log('Exec:'+cmd.join(" "));
-                let child = sudo(cmd, {password: rootPwd});
-                child.stderr.on('data', (dat)=>{
-                    let msg = 'Error in executing\n$ ';
-                    msg += cmd.join(' ') + '\n' + dat.toString();
-                    console.error(msg);
-                    if (ignoreErrorCmds.indexOf(cmd[2]) >= 0) return;
-                    msg = 'Error in executing\n\n$ ';
-                    msg += cmd.join(' ') + '\n\n' + dat.toString();
-                    rj(msg); // Interrupt execution
-                    commands = [];
-                });
-                child.stdout.on('close', ()=>{
-                    if (commands.length == 0) {
-                        // ipv4.refreshMyAddress();
-                        ac(newSettings);
-                        return;
-                    } else ex();
-                });
+
+            const ignoreErrorHandler = (cmd) => {
+                const ignoreErrorCmds = ['delete', 'down'];
+                return (ignoreErrorCmds.indexOf(cmd[2]) >= 0);
             };
-            ex();
+            executeCommands(
+                commands,
+                ignoreErrorHandler,
+                {sudo: true, password: rootPwd}).then(() => {
+                ac(newSettings);
+            }).catch(rj);
         }
     });
 }
@@ -471,4 +448,171 @@ function scanWiFi() {
             ac(aps);
         });
     });
+}
+
+
+/**
+ * Set static route to ipv4 network
+ * @param {string} target : the destination network or host. e.g. 224.0.23.0/32
+ * @param {string} gatewayIP : gateway IP address
+ * @param {string} rootPwd : root password for executing sudo
+ * @return {Promise} Return last command output
+ */
+async function routeSet(target, gatewayIP, rootPwd) {
+    let deleteCmds;
+    const prevRoute = await searchPrevRoute(target);
+    const connName = await searchConnName(gatewayIP);
+    if (prevRoute) {
+        if (prevRoute.connName === connName &&
+            prevRoute.target === target &&
+            prevRoute.gatewayIP === gatewayIP) {
+            return; // no need to do anything
+        }
+        deleteCmds = [
+            ['nmcli', 'connection', 'modify', prevRoute.connName,
+                '-ipv4.routes', `${prevRoute.target} ${prevRoute.gatewayIP}`],
+            ['nmcli', 'connection', 'down', prevRoute.connName],
+            ['nmcli', 'connection', 'up', prevRoute.connName],
+        ];
+    }
+
+    let cmds = [
+        ['nmcli', 'connection', 'modify', connName,
+            '+ipv4.routes', `${target} ${gatewayIP}`],
+        ['nmcli', 'connection', 'down', connName],
+        ['nmcli', 'connection', 'up', connName],
+    ];
+    if (deleteCmds) {
+        cmds = deleteCmds.concat(cmds);
+    }
+    return await executeCommands(cmds, null, {sudo: true, password: rootPwd});
+
+
+    // eslint-disable-next-line require-jsdoc
+    async function searchPrevRoute(target) {
+        const connNames = await listConnectionNames();
+        for (const connName of connNames) {
+            const cmd = [
+                'nmcli', '-f', 'IP4.ROUTE', 'connection', 'show', connName,
+            ];
+            const output = await executeCommand(cmd);
+            for (const line of output.split('\n')) {
+                const exs = `dst\\s*=\\s*${target},\\snh\\s*=\\s*([\\d\.]+)`;
+                const re = line.match(new RegExp(exs));
+                if (!re) {
+                    continue;
+                }
+                return {
+                    connName: connName,
+                    target: target,
+                    gatewayIP: re[1],
+                };
+            }
+        }
+        return null;
+    }
+
+    // eslint-disable-next-line require-jsdoc
+    async function searchConnName(gatewayIP) {
+        const connNames = await listConnectionNames();
+        const gipnum = ipv4.convToNum(gatewayIP);
+        for (const connName of connNames) {
+            const cmd = [
+                'nmcli', '-f', 'IP4.ADDRESS', 'connection', 'show', connName,
+            ];
+            const output = await executeCommand(cmd);
+            for (const line of output.split('\n')) {
+                const re = line.match(/\s+([\d\.]+)\/([\d]+)/);
+                if (!re) {
+                    continue;
+                }
+                const ip = ipv4.convToNum(re[1]);
+                const mask = parseInt(re[2]);
+                if ((ip & mask) == (gipnum & mask)) {
+                    return connName;
+                }
+            }
+        }
+        return null;
+    }
+}
+exports.routeSet = routeSet;
+
+/**
+ * List connection names with device name
+ * @return {Array.<object>} Return list of connection name and device name
+ */
+async function listConnectionNames() {
+    // Obtain nmcli connection name for newnet.
+    const connList = await executeCommand(
+        ['nmcli', '-f', 'NAME,DEVICE', '-t', 'connection', 'show']);
+    const ret = connList.split('\n').map((l) => {
+        const [name] = l.split(/:/);
+        return name;
+    }).filter((name) => {
+        return name;
+    });
+    return ret;
+}
+
+
+/**
+ * Execute command with sudo
+ * @param {Array.<string>} commands : Array of command list
+ * @param {object} [option] : option parameter
+ * @param {Promise} Return stdout strings
+ */
+function executeCommand(cmd, option) {
+    option = option || {};
+    return new Promise((ac, rj)=>{
+        let okMsg = '';
+        let erMsg='';
+        console.log('Exec:'+cmd.join(' '));
+        let child;
+        if (option.sudo) {
+            child = sudo(cmd, {password: option.password});
+        } else {
+            child = spawn(cmd[0], cmd.slice(1));
+        }
+        child.stdout.on('data', (dat)=>{
+            okMsg += dat.toString();
+        });
+        child.stderr.on('data', (dat)=>{
+            erMsg += dat.toString();
+        });
+        child.on('close', (code)=>{
+            if (code == 0) {
+                ac(okMsg);
+            } else {
+                rj('Error in executing\n'
+                   +'$ '+cmd.join(' ')+'\n\n'
+                   + erMsg);
+            }
+        });
+        child.on('error', (err)=>{
+            rj(err);
+        });
+    });
+}
+
+/**
+ * Execute commands with sudo
+ * @param {Array.<Array.<string>>} commands : Array of command list
+ * @param {function} ignoreErrorFunc : Handler for determining whether to ignore when command fails
+ * @param {object} [option] : option parameter
+ * @param {Promise} Return standard output of each command as an array
+ */
+async function executeCommands(commands, ignoreErrorFunc, option) {
+    const ret = [];
+    for (const cmd of commands) {
+        const r = await executeCommand(cmd, option).catch((e) => {
+            if (ignoreErrorFunc && ignoreErrorFunc(cmd)) {
+                // ignore error
+                return '';
+            }
+            throw e;
+        });
+        ret.push(r);
+    }
+    return ret;
 }
