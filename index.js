@@ -1,7 +1,9 @@
+
 let log = console.log;
 const ipv4 = require('./ipv4.js');
 const sudo = require('./sudo.js');
 const exec = require('child_process').exec;
+const execSync = require('child_process').execSync;
 const spawn = require('child_process').spawn;
 let pluginInterface;
 let localStorage;
@@ -616,3 +618,17 @@ async function executeCommands(commands, ignoreErrorFunc, option) {
     }
     return ret;
 }
+
+/**
+ * Check if NetworkManager is installed
+ * @return {boolean} If true, it is installed
+ */
+function supportedNetworkManager() {
+    try {
+        execSync('nmcli connection');
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+exports.supportedNetworkManager = supportedNetworkManager;
