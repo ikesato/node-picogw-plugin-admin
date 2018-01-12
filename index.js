@@ -293,104 +293,126 @@ exports.onUIGetSettingsSchema = onUIGetSettingsSchema;
  * @param {object} newSettings Settings edited for UI
  * @return {object} Settings to save
  */
-function onUISetSettings(newSettings) {
-    return new Promise((ac, rj)=>{
-        const pi = pluginInterface;
-        if (newSettings.server_port != -1) {
-            pi.publish('client_settings', {port: newSettings.server_port});
+async function onUISetSettings(newSettings) {
+    const pi = pluginInterface;
+    if (newSettings.server_port != -1) {
+        pi.publish('client_settings', {port: newSettings.server_port});
+    }
+
+    for (const clName of Object.keys(newSettings.api_filter)) {
+        const clo = localStorage.getItem(clName);
+        clo.filter = newSettings.api_filter[clName];
+        localStorage.setItem(clName, clo);
+    }
+
+    const rootPwd = newSettings.root_passwd;
+    newSettings.root_passwd = ''; // Root password is not saved to the file
+
+    if (!newSettings.interfaces) {
+        return newSettings;
+    }
+
+    let interf;
+    for (const k of Object.keys(newSettings.interfaces)) {
+        interf = k;
+    }
+    const ss = newSettings.interfaces[interf];
+
+    const cname = NMCLI_CONNECTION_NAME_PREFIX + '_' + interf;
+    let commands = [];
+    // Delete connection (may fail for first time)
+    commands.push(['nmcli', 'connection', 'down', cname]);
+    commands.push(['nmcli', 'connection', 'delete', cname]);
+
+    if (interf.indexOf('wlan')==0) {
+        const manualap = ss.apname_manual.trim();
+        commands.push([
+            'nmcli', 'connection', 'add', 'con-name', cname,
+            'type', 'wifi', 'ifname', interf, 'ssid',
+            (manualap.length==0 ? ss.apname : manualap)]);
+    } else { // if( interf.indexOf('eth')==0 )
+        commands.push([
+            'nmcli', 'connection', 'add', 'con-name', cname,
+            'type', 'ethernet', 'ifname', interf]);
+    }
+    const ignoreErrorHandler = (cmd) => {
+        const ignoreErrorCmds = ['delete', 'down'];
+        return (ignoreErrorCmds.indexOf(cmd[2]) >= 0);
+    };
+    await executeCommands(
+        commands,
+        ignoreErrorHandler,
+        {sudo: true, password: rootPwd},
+    );
+
+    commands = [];
+    if (newSettings.detail.ip == undefined) { // DHCP
+        commands.push(['nmcli', 'connection', 'modify', cname,
+            'ipv4.method', 'auto']);
+    } else { // static ip
+        if (newSettings.detail.default_gateway == undefined) {
+            newSettings.detail.default_gateway = '';
         }
-
-        for (const clName of Object.keys(newSettings.api_filter)) {
-            const clo = localStorage.getItem(clName);
-            clo.filter = newSettings.api_filter[clName];
-            localStorage.setItem(clName, clo);
+        const ipSetting =
+            (newSettings.detail.ip + ' '
+             + newSettings.detail.default_gateway).trim();
+        commands.push(['nmcli', 'connection', 'modify', cname,
+            'ipv4.method', 'manual', 'ipv4.addresses', ipSetting]);
+    }
+    await executeCommands(
+        commands, null, {sudo: true, password: rootPwd}
+    ).then(() => {
+        commands = [];
+    }).catch((e) => {
+        if (newSettings.detail.ip == undefined) { // DHCP
+            throw e;
         }
-
-        if (newSettings.interfaces != null) {
-            const rootPwd = newSettings.root_passwd;
-            newSettings.root_passwd = ''; // Root password is not saved to the file
-            // ac(newSettings);return;
-            // log('NewSettings:');
-            // log(JSON.stringify(newSettings,null,'\t'));
-
-            let interf;
-            for (const k of Object.keys(newSettings.interfaces)) {
-                interf = k;
-            }
-            const ss = newSettings.interfaces[interf];
-
-            const cname = NMCLI_CONNECTION_NAME_PREFIX + '_' + interf;
-            let commands = [];
-            // Delete connection (may fail for first time)
-            commands.push(['nmcli', 'connection', 'down', cname]);
-            commands.push(['nmcli', 'connection', 'delete', cname]);
-
-            if (interf.indexOf('wlan')==0) {
-                const manualap = ss.apname_manual.trim();
-                commands.push([
-                    'nmcli', 'connection', 'add', 'con-name', cname,
-                    'type', 'wifi', 'ifname', interf, 'ssid',
-                    (manualap.length==0 ? ss.apname : manualap)]);
-            } else { // if( interf.indexOf('eth')==0 )
-                commands.push([
-                    'nmcli', 'connection', 'add', 'con-name', cname,
-                    'type', 'ethernet', 'ifname', interf]);
-            }
-
-
-            if (newSettings.detail.ip == undefined) { // DHCP
-                commands.push(['nmcli', 'connection', 'modify', cname,
-                    'ipv4.method', 'auto']);
-            } else { // static ip
-                if (newSettings.detail.default_gateway == undefined) {
-                    newSettings.detail.default_gateway = '';
-                }
-                const ipSetting =
-                    (newSettings.detail.ip + ' '
-                     + newSettings.detail.default_gateway).trim();
-                commands.push(['nmcli', 'connection', 'modify', cname,
-                    'ipv4.method', 'manual', 'ipv4.addresses', ipSetting]);
-            }
-
-            if (interf.indexOf('wlan')==0) {
-                if (ss.password != ss.password2) {
-                    rj('Password mismatch.');
-                    return;
-                }
-                const apPwd = ss.password; ss.password = ss.password2 = '';
-                commands.push(['nmcli', 'connection', 'modify', cname,
-                    'wifi-sec.key-mgmt', 'wpa-psk', 'wifi-sec.psk', apPwd]);
-            }
-            // commands.push(['nmcli','connection','down', cname]);
-            commands.push(['nmcli', 'connection', 'up', cname]);
-
-            if (newSettings.server_power != 'none') {
-                commands.push([]); // Accept and save settings first
-                if (newSettings.server_power == 'reboot') {
-                    commands.push(['reboot']);
-                }
-                if (newSettings.server_power == 'shutdown') {
-                    commands.push(['shutdown', '-h', 'now']);
-                }
-                newSettings.server_power = 'none';
-            }
-
-            // log('Commands:');
-            // log(JSON.stringify(commands,null,'\t'));
-
-
-            const ignoreErrorHandler = (cmd) => {
-                const ignoreErrorCmds = ['delete', 'down'];
-                return (ignoreErrorCmds.indexOf(cmd[2]) >= 0);
-            };
-            executeCommands(
-                commands,
-                ignoreErrorHandler,
-                {sudo: true, password: rootPwd}).then(() => {
-                ac(newSettings);
-            }).catch(rj);
-        }
+        // static ip
+        // The new version 'nmcli' has changed ipv4.gateway format
+        commands = [];
+        commands.push([
+            'nmcli', 'connection', 'modify', cname,
+            'ipv4.method', 'manual',
+            'ipv4.addresses', newSettings.detail.ip,
+            'ipv4.gateway', newSettings.detail.default_gateway]);
     });
+    if (commands.length > 0) {
+        await executeCommands(commands, null, {sudo: true, password: rootPwd});
+        commands = [];
+    }
+
+    if (interf.indexOf('wlan')==0) {
+        if (ss.password != ss.password2) {
+            throw new Error('Password mismatch.');
+        }
+        const apPwd = ss.password; ss.password = ss.password2 = '';
+        commands.push(['nmcli', 'connection', 'modify', cname,
+            'wifi-sec.key-mgmt', 'wpa-psk', 'wifi-sec.psk', apPwd]);
+    }
+    // commands.push(['nmcli','connection','down', cname]);
+    commands.push(['nmcli', 'connection', 'up', cname]);
+
+    if (newSettings.server_power != 'none') {
+        commands.push([]); // Accept and save settings first
+        if (newSettings.server_power == 'reboot') {
+            commands.push(['reboot']);
+        }
+        if (newSettings.server_power == 'shutdown') {
+            commands.push(['shutdown', '-h', 'now']);
+        }
+        newSettings.server_power = 'none';
+    }
+
+    // log('Commands:');
+    // log(JSON.stringify(commands,null,'\t'));
+
+
+    await executeCommands(
+        commands,
+        ignoreErrorHandler,
+        {sudo: true, password: rootPwd},
+    );
+    return newSettings;
 }
 exports.onUISetSettings = onUISetSettings;
 

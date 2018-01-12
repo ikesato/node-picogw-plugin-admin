@@ -4,6 +4,7 @@ const PING_TIMEOUT_IN_SEC = 7;
 const arped = require('arped');
 const ping = require('ping');
 const os = require('os');
+const log = console.log;
 
 // //////////////////////////////////////////
 //   Exported methods
@@ -104,11 +105,6 @@ exports.setNetCallbackFunctions(
 // ///////////////////////////////////////////
 
 
-// eslint-disable-next-line require-jsdoc
-function log(msg) {
-    if (typeof(msg)=='object') console.log(JSON.stringify(msg, null, '\t'));
-    else console.log(msg);
-}
 
 // eslint-disable-next-line require-jsdoc
 function pingNet(net, ip) {
