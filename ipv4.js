@@ -265,7 +265,6 @@ function chkArpTable() {
 
 
 
-
 /**
  * Start checking the arp table
  */
@@ -307,10 +306,10 @@ exports.getNetworkInterfaces = getNetworkInterfaces;
  * @return {string} network interface. e.g. 'eth0' or 'wlan0'
  */
 function searchNetworkInterface(ip, networks) {
-    networks = networks || getNetworks();
+    networks = networks || getNetworkInterfaces();
     for (const [net, netinfo] of Object.entries(networks)) {
         const ipnet = netinfo.ip;
-        const mask = netinfo.mask;
+        const mask = netinfo.netmask;
         if (isNetworkSame(mask, ip, ipnet)) {
             return net;
         }
