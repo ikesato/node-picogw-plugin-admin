@@ -50,7 +50,8 @@ exports.init = init;
 
 // Returns promise
 exports.getMACFromIPv4Address_Forward = function(net, ip, bSearch) {
-    return ipv4.getMACFromIPv4Address(net, ip, bSearch);
+    return ipv4.getMACFromIPv4Address(
+        net, ip, bSearch);
 };
 
 // callbacks_obj can contain the following four members
@@ -582,9 +583,9 @@ async function listConnectionNames() {
 
 /**
  * Execute command with sudo
- * @param {Array.<string>} commands : Array of command list
+ * @param {Array.<string>} cmd : Array of command
  * @param {object} [option] : option parameter
- * @param {Promise} Return stdout strings
+ * @return {Promise} Return stdout strings
  */
 function executeCommand(cmd, option) {
     option = option || {};
@@ -624,7 +625,7 @@ function executeCommand(cmd, option) {
  * @param {Array.<Array.<string>>} commands : Array of command list
  * @param {function} ignoreErrorFunc : Handler for determining whether to ignore when command fails
  * @param {object} [option] : option parameter
- * @param {Promise} Return standard output of each command as an array
+ * @return {Promise} Return standard output of each command as an array
  */
 async function executeCommands(commands, ignoreErrorFunc, option) {
     const ret = [];

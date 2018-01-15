@@ -105,7 +105,6 @@ exports.setNetCallbackFunctions(
 // ///////////////////////////////////////////
 
 
-
 // eslint-disable-next-line require-jsdoc
 function pingNet(net, ip) {
     return new Promise((ac, rj)=>{
@@ -264,7 +263,6 @@ function chkArpTable() {
 }
 
 
-
 /**
  * Start checking the arp table
  */
@@ -279,7 +277,6 @@ function startCheckingArpTable() {
     chkArpTable();
 }
 exports.startCheckingArpTable = startCheckingArpTable;
-
 
 
 /**
