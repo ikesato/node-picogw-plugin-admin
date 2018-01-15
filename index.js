@@ -654,3 +654,33 @@ function supportedNetworkManager() {
     }
 }
 exports.supportedNetworkManager = supportedNetworkManager;
+
+
+/**
+ * Return the network list for each interface
+ * @return {object} network list
+ */
+function getNetworkInterfaces() {
+    return ipv4.getNetworkInterfaces();
+}
+exports.getNetworkInterfaces = getNetworkInterfaces;
+
+
+/**
+ * Look for the network interface from the IP address
+ * @param {string} ip : IP address
+ * @param {object} [networks] : List of my network interfaces. This is the same as getNetworkInterfaces() 's return value.
+ * @return {string} network interface. e.g. 'eth0' or 'wlan0'
+ */
+function searchNetworkInterface(ip, networks) {
+    return ipv4.searchNetworkInterface(ip, networks);
+}
+exports.searchNetworkInterface = searchNetworkInterface;
+
+/**
+ * Start checking the arp table
+ */
+function startCheckingArpTable() {
+    ipv4.startCheckingArpTable();
+}
+exports.startCheckingArpTable = startCheckingArpTable;

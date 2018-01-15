@@ -190,7 +190,12 @@ function chkArpTable() {
         for (const [_mynet, iface] of Object.entries(ifaces)) {
             iface.forEach((iinfo)=>{
                 if (iinfo.family !== 'IPv4' || iinfo.internal === true) return;
-                macs[iinfo.mac] = {net: _mynet, ip: iinfo.address, self: true};
+                macs[iinfo.mac] = {
+                    net: _mynet,
+                    ip: iinfo.address,
+                    self: true,
+                    netmask: iinfo.netmask,
+                };
 
                 let mynet = _mynet;
 
@@ -258,12 +263,58 @@ function chkArpTable() {
     }
 }
 
-setInterval(()=>{
-    chkArpTable();
-    for (const macinfo of Object.values(macs)) {
-        pingNet(macinfo.net, macinfo.ip);
-    }
-}, CHECK_ARP_TABLE_AND_PING_INTERVAL);
 
-// Initial check
-chkArpTable();
+
+
+/**
+ * Start checking the arp table
+ */
+function startCheckingArpTable() {
+    setInterval(()=>{
+        chkArpTable();
+        for (const macinfo of Object.values(macs)) {
+            pingNet(macinfo.net, macinfo.ip);
+        }
+    }, CHECK_ARP_TABLE_AND_PING_INTERVAL);
+    // Initial check
+    chkArpTable();
+}
+exports.startCheckingArpTable = startCheckingArpTable;
+
+
+
+/**
+ * Return the network list for each interface
+ * @return {object} network list
+ */
+function getNetworkInterfaces() {
+    const ret = {};
+    for (const macinfo of Object.values(macs)) {
+        if (!macinfo.self) {
+            continue;
+        }
+        ret[macinfo.net] = macinfo;
+    }
+    return ret;
+}
+exports.getNetworkInterfaces = getNetworkInterfaces;
+
+
+/**
+ * Look for the network interface from the IP address
+ * @param {string} ip : IP address
+ * @param {object} [networks] : List of my network interfaces. This is the same as getNetworks () 's return value.
+ * @return {string} network interface. e.g. 'eth0' or 'wlan0'
+ */
+function searchNetworkInterface(ip, networks) {
+    networks = networks || getNetworks();
+    for (const [net, netinfo] of Object.entries(networks)) {
+        const ipnet = netinfo.ip;
+        const mask = netinfo.mask;
+        if (isNetworkSame(mask, ip, ipnet)) {
+            return net;
+        }
+    }
+    return null;
+}
+exports.searchNetworkInterface = searchNetworkInterface;
