@@ -479,37 +479,28 @@ function scanWiFi() {
 /**
  * Set static route to ipv4 network
  * @param {string} target : the destination network or host. e.g. 224.0.23.0/32
- * @param {string} gatewayIP : gateway IP address
+ * @param {string} netInterface : network interface to set route
  * @param {string} rootPwd : root password for executing sudo
  * @return {Promise} Return last command output
  */
-async function routeSet(target, gatewayIP, rootPwd) {
-    let deleteCmds;
-    const prevRoute = await searchPrevRoute(target);
-    const connName = await searchSameNetworkConnName(gatewayIP);
-    if (prevRoute) {
-        if (prevRoute.connName === connName &&
-            prevRoute.target === target &&
-            prevRoute.gatewayIP === gatewayIP) {
+async function routeSet(target, netInterface, rootPwd) {
+    const connName = await searchConnNameFromNetworkInterface(netInterface);
+    const prevRoutes = await searchPrevRoutes(target);
+    if (prevRoutes.length == 1) {
+        if (prevRoutes[0].connName === connName &&
+            prevRoutes[0].target === target &&
+            prevRoutes[0].gatewayIP === '0.0.0.0') {
             return; // no need to do anything
         }
-        deleteCmds = [
-            ['nmcli', 'connection', 'modify', prevRoute.connName,
-                '-ipv4.routes', `${prevRoute.target} ${prevRoute.gatewayIP}`],
-            ['nmcli', 'connection', 'down', prevRoute.connName],
-            ['nmcli', 'connection', 'up', prevRoute.connName],
-        ];
     }
+    await routeDelete(target, rootPwd);
 
-    let cmds = [
+    const cmds = [
         ['nmcli', 'connection', 'modify', connName,
-            '+ipv4.routes', `${target} ${gatewayIP}`],
+            '+ipv4.routes', `${target} 0.0.0.0`],
         ['nmcli', 'connection', 'down', connName],
         ['nmcli', 'connection', 'up', connName],
     ];
-    if (deleteCmds) {
-        cmds = deleteCmds.concat(cmds);
-    }
     return await executeCommands(cmds, null, {sudo: true, password: rootPwd});
 }
 exports.routeSet = routeSet;
@@ -521,16 +512,18 @@ exports.routeSet = routeSet;
  * @return {Promise} Return standard output of each command as an array
  */
 async function routeDelete(target, rootPwd) {
-    const prevRoute = await searchPrevRoute(target);
-    if (!prevRoute) {
+    const prevRoutes = await searchPrevRoutes(target);
+    if (prevRoutes.length == 0) {
         return; // no need to do anything
     }
-    const cmds = [
-        ['nmcli', 'connection', 'modify', prevRoute.connName,
-            '-ipv4.routes', `${prevRoute.target} ${prevRoute.gatewayIP}`],
-        ['nmcli', 'connection', 'down', prevRoute.connName],
-        ['nmcli', 'connection', 'up', prevRoute.connName],
-    ];
+    const cmds = [];
+    for (const prevRoute of prevRoutes) {
+        cmds.push([
+            'nmcli', 'connection', 'modify', prevRoute.connName,
+            '-ipv4.routes', `${prevRoute.target} ${prevRoute.gatewayIP}`]);
+        cmds.push(['nmcli', 'connection', 'down', prevRoute.connName]);
+        cmds.push(['nmcli', 'connection', 'up', prevRoute.connName]);
+    }
     return await executeCommands(cmds, null, {sudo: true, password: rootPwd});
 }
 exports.routeDelete = routeDelete;
@@ -539,26 +532,36 @@ exports.routeDelete = routeDelete;
  * List connection names with device name
  * @return {Array.<object>} Return list of connection name and device name
  */
-async function listConnectionNames() {
-    // Obtain nmcli connection name for newnet.
+async function listConnections() {
     const connList = await executeCommand(
         ['nmcli', '-f', 'NAME,DEVICE', '-t', 'connection', 'show']);
-    const ret = connList.split('\n').map((l) => {
-        const [name] = l.split(/:/);
-        return name;
-    }).filter((name) => {
-        return name;
+    const ret = {};
+    connList.split('\n').map((l) => {
+        return l.split(/:/);
+    }).filter((ary) => {
+        return ary[0] && ary[1];
+    }).forEach((ary) => {
+        ret[ary[0]] = ary[1];
     });
     return ret;
 }
 
 /**
+ * List connection names
+ * @return {Array.<string>} Return list of connection name
+ */
+async function listConnectionNames() {
+    return Object.keys(await listConnections());
+}
+
+/**
  * Search previous route from NetworkManager
  * @param {string} target : the destination network or host. e.g. 224.0.23.0/32
- * @return {object} Return previous route setting
+ * @return {Array.<object>} Return list of previous route setting
  */
-async function searchPrevRoute(target) {
+async function searchPrevRoutes(target) {
     const connNames = await listConnectionNames();
+    const ret = [];
     for (const connName of connNames) {
         const cmd = [
             'nmcli', '-f', 'IP4.ROUTE', 'connection', 'show', connName,
@@ -570,14 +573,14 @@ async function searchPrevRoute(target) {
             if (!re) {
                 continue;
             }
-            return {
+            ret.push({
                 connName: connName,
                 target: target,
                 gatewayIP: re[1],
-            };
+            });
         }
     }
-    return null;
+    return ret;
 }
 
 /**
@@ -585,7 +588,7 @@ async function searchPrevRoute(target) {
  * @param {string} ip : ip address
  * @return {string} connection name for NetworkManager
  */
-async function searchSameNetworkConnName(ip) {
+async function searchConnNameFromIP(ip) { // eslint-disable-line no-unused-vars
     const connNames = await listConnectionNames();
     const gipnum = ipv4.convToNum(ip);
     for (const connName of connNames) {
@@ -603,6 +606,21 @@ async function searchSameNetworkConnName(ip) {
             if ((ip & mask) == (gipnum & mask)) {
                 return connName;
             }
+        }
+    }
+    return null;
+}
+
+/**
+ * Search the connection name from the network interface
+ * @param {string} netInterface : network interface
+ * @return {string} connection name for NetworkManager
+ */
+async function searchConnNameFromNetworkInterface(netInterface) { // eslint-disable-line no-unused-vars
+    const conns = await listConnections();
+    for (const [connName, nif] of Object.entries(conns)) {
+        if (nif === netInterface) {
+            return connName;
         }
     }
     return null;
