@@ -511,8 +511,6 @@ async function routeSet(target, gatewayIP, rootPwd) {
         cmds = deleteCmds.concat(cmds);
     }
     return await executeCommands(cmds, null, {sudo: true, password: rootPwd});
-
-
 }
 exports.routeSet = routeSet;
 
