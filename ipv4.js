@@ -289,7 +289,7 @@ function getNetworkInterfaces() {
         if (!macinfo.self) {
             continue;
         }
-        ret[macinfo.net] = macinfo;
+        ret[macinfo.net] = objCpy(macinfo);
     }
     return ret;
 }
