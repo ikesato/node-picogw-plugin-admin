@@ -486,7 +486,7 @@ function scanWiFi() {
 async function routeSet(target, gatewayIP, rootPwd) {
     let deleteCmds;
     const prevRoute = await searchPrevRoute(target);
-    const connName = await searchConnName(gatewayIP);
+    const connName = await searchSameNetworkConnName(gatewayIP);
     if (prevRoute) {
         if (prevRoute.connName === connName &&
             prevRoute.target === target &&
@@ -513,55 +513,29 @@ async function routeSet(target, gatewayIP, rootPwd) {
     return await executeCommands(cmds, null, {sudo: true, password: rootPwd});
 
 
-    // eslint-disable-next-line require-jsdoc
-    async function searchPrevRoute(target) {
-        const connNames = await listConnectionNames();
-        for (const connName of connNames) {
-            const cmd = [
-                'nmcli', '-f', 'IP4.ROUTE', 'connection', 'show', connName,
-            ];
-            const output = await executeCommand(cmd);
-            for (const line of output.split('\n')) {
-                const exs = `dst\\s*=\\s*${target},\\snh\\s*=\\s*([\\d\.]+)`;
-                const re = line.match(new RegExp(exs));
-                if (!re) {
-                    continue;
-                }
-                return {
-                    connName: connName,
-                    target: target,
-                    gatewayIP: re[1],
-                };
-            }
-        }
-        return null;
-    }
-
-    // eslint-disable-next-line require-jsdoc
-    async function searchConnName(gatewayIP) {
-        const connNames = await listConnectionNames();
-        const gipnum = ipv4.convToNum(gatewayIP);
-        for (const connName of connNames) {
-            const cmd = [
-                'nmcli', '-f', 'IP4.ADDRESS', 'connection', 'show', connName,
-            ];
-            const output = await executeCommand(cmd);
-            for (const line of output.split('\n')) {
-                const re = line.match(/\s+([\d\.]+)\/([\d]+)/);
-                if (!re) {
-                    continue;
-                }
-                const ip = ipv4.convToNum(re[1]);
-                const mask = parseInt(re[2]);
-                if ((ip & mask) == (gipnum & mask)) {
-                    return connName;
-                }
-            }
-        }
-        return null;
-    }
 }
 exports.routeSet = routeSet;
+
+/**
+ * Delete static route from ipv4 network
+ * @param {string} target : the destination network or host. e.g. 224.0.23.0/32
+ * @param {string} rootPwd : root password for executing sudo
+ * @return {Promise} Return standard output of each command as an array
+ */
+async function routeDelete(target, rootPwd) {
+    const prevRoute = await searchPrevRoute(target);
+    if (!prevRoute) {
+        return; // no need to do anything
+    }
+    const cmds = [
+        ['nmcli', 'connection', 'modify', prevRoute.connName,
+            '-ipv4.routes', `${prevRoute.target} ${prevRoute.gatewayIP}`],
+        ['nmcli', 'connection', 'down', prevRoute.connName],
+        ['nmcli', 'connection', 'up', prevRoute.connName],
+    ];
+    return await executeCommands(cmds, null, {sudo: true, password: rootPwd});
+}
+exports.routeDelete = routeDelete;
 
 /**
  * List connection names with device name
@@ -580,6 +554,61 @@ async function listConnectionNames() {
     return ret;
 }
 
+/**
+ * Search previous route from NetworkManager
+ * @param {string} target : the destination network or host. e.g. 224.0.23.0/32
+ * @return {object} Return previous route setting
+ */
+async function searchPrevRoute(target) {
+    const connNames = await listConnectionNames();
+    for (const connName of connNames) {
+        const cmd = [
+            'nmcli', '-f', 'IP4.ROUTE', 'connection', 'show', connName,
+        ];
+        const output = await executeCommand(cmd);
+        for (const line of output.split('\n')) {
+            const exs = `dst\\s*=\\s*${target},\\snh\\s*=\\s*([\\d\.]+)`;
+            const re = line.match(new RegExp(exs));
+            if (!re) {
+                continue;
+            }
+            return {
+                connName: connName,
+                target: target,
+                gatewayIP: re[1],
+            };
+        }
+    }
+    return null;
+}
+
+/**
+ * Search the connection name of the same network from the ip address
+ * @param {string} ip : ip address
+ * @return {string} connection name for NetworkManager
+ */
+async function searchSameNetworkConnName(ip) {
+    const connNames = await listConnectionNames();
+    const gipnum = ipv4.convToNum(ip);
+    for (const connName of connNames) {
+        const cmd = [
+            'nmcli', '-f', 'IP4.ADDRESS', 'connection', 'show', connName,
+        ];
+        const output = await executeCommand(cmd);
+        for (const line of output.split('\n')) {
+            const re = line.match(/\s+([\d\.]+)\/([\d]+)/);
+            if (!re) {
+                continue;
+            }
+            const ip = ipv4.convToNum(re[1]);
+            const mask = parseInt(re[2]);
+            if ((ip & mask) == (gipnum & mask)) {
+                return connName;
+            }
+        }
+    }
+    return null;
+}
 
 /**
  * Execute command with sudo
