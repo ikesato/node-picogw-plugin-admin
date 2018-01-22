@@ -23,7 +23,7 @@
     ]
   },
   "dependencies": {
-    "arped": "git+https://github.com/koozyt/node-arped.git#wait-for-pr",
+    "arped": "file:local-npms/node-arped-0.3.0.tar.gz",
     "inpath": "^1.0.2",
     "pidof": "^1.0.2",
     "ping": "^0.2.2",
