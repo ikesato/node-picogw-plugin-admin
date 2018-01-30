@@ -1,7 +1,7 @@
 {
-  "name": "picogw-plugin-admin",
+  "name": "picogw-plugin-admin-ikesato-test",
   "version": "0.0.4",
-  "description": "Admin plugin of picogw",
+  "description": "Admin plugin of picogw (for test)",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -9,21 +9,21 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/KAIT-HEMS/node-picogw-plugin-admin.git"
+    "url": "git+https://github.com/ikesato/node-picogw-plugin-admin.git"
   },
   "author": "",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/KAIT-HEMS/node-picogw-plugin-admin/issues"
+    "url": "https://github.com/ikesato/node-picogw-plugin-admin/issues"
   },
-  "homepage": "https://github.com/KAIT-HEMS/node-picogw-plugin-admin#readme",
+  "homepage": "https://github.com/ikesato/node-picogw-plugin-admin#readme",
   "picogw": {
     "role": [
       "server"
     ]
   },
   "dependencies": {
-    "arped": "file:local-npms/node-arped-0.3.0.tar.gz",
+    "arped": "https://github.com/koozyt/node-arped/archive/v0.3.0.tar.gz",
     "inpath": "^1.0.2",
     "pidof": "^1.0.2",
     "ping": "^0.2.2",
@@ -32,8 +32,5 @@
   "devDependencies": {
     "eslint": "^4.13.1",
     "eslint-config-google": "^0.9.1"
-  },
-  "bundledDependencies": [
-    "arped"
-  ]
+  }
 }
